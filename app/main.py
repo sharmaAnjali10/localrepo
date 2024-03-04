@@ -260,12 +260,15 @@ def forgot_password(email:str, db:Session=Depends(get_db)):
     if verify_user:
         otp=otp_gen()
         user_data={}
-        send_email(otp , verify_user.email)
+        send_email(otp, verify_user.email)
         user_data["user_id"] = verify_user.email
         user_data["otp"] = otp
         user_data["description"] ="Update Password"
         otp_ex = db.query(Otp).filter(Otp.otp == user_data["otp"]).first()
-        otp_ex.otp = otp if otp_ex else Otp(**user_data)
+        if otp_ex:
+             otp_ex.otp = otp 
+        else:
+            otp_ex = Otp(**user_data)
         db.add( otp_ex)
         db.commit()
         db.refresh( otp_ex)
@@ -337,12 +340,13 @@ def send_request(receiver_id:int, db:Session=Depends(get_db), user:User=Depends(
 @app.get('/view_request')
 def get_send_request(db:Session=Depends(get_db), user:User=Depends(get_current_user)):
     friend_request = db.query(SendRequest).filter(SendRequest.receiver_id == user.id)
-    if friend_request:
+    if friend_request == []:
+        return {"No request here..!"}   
+    else:
         results = [suser for suser in friend_request]
         return{"Message":"You Got Request From..",
                "Sender_id as":results}
-    else:
-        return{"No request here..!"}
+        
 
 @app.post('/accept_request')
 def accept_request(id:int, db:Session=Depends(get_db), user:User=Depends(get_current_user)):
@@ -493,36 +497,42 @@ def user_room(friend_id:int, db:Session=Depends(get_db), user:User=Depends(get_c
             fav_user = check_user.friends
         if friend_id in fav_user:
             data = str(check_user.user_id) + str(friend_id)   
-        check_ex = db.query(Room).filter(and_(or_(Room.sender_id== user.id,Room.receiver_id == user.id)),(or_(Room.receiver_id== friend_id,Room.sender_id == friend_id))).first()
-        if check_ex:
-            user_data["room_id"] =check_ex.room_id
+        check_list = db.query(Room).filter(and_(or_(Room.sender_id== user.id,Room.receiver_id == user.id)),(or_(Room.receiver_id== friend_id,Room.sender_id == friend_id))).first()
+        if check_list:
+            user_data["room_id"] = check_list.room_id
             user_data["sender_id"] = user.id 
             user_data["receiver_id"] = friend_id   
         else:
             user_data["room_id"] =int(data)
             user_data["sender_id"] = user.id 
             user_data["receiver_id"] = friend_id
-        detail = Room(**user_data)
-        db.add(detail)
-        db.commit()
-        db.refresh(detail)
-        return{"Message":"You are ready for conversation now...",
-                "Room_id":detail}
+        check_ex =db.query(Room).filter(and_(Room.sender_id == user.id,Room.receiver_id == friend_id)).first()
+        if check_ex:
+            raise HTTPException(status_code = 404, detail = "User already existed..!")
+        else:
+            detail = Room(**user_data)
+            db.add(detail)
+            db.commit()
+            db.refresh(detail)
+            return{"Message":"You are ready for conversation now...",
+                    "Room_id":detail}
     else:
         raise HTTPException(status_code = 404, detail = "No user existed..")
                    
 @app.post('/chat_list')
-def chat_list(room_id:int,msg:str, db:Session=Depends(get_db), user:User=Depends(get_current_user)):
+def chat_list(room_id:int,msg:str,user_status:bool,db:Session=Depends(get_db), user:User=Depends(get_current_user)):
     user_data = {}
     getroom = db.query(Room).filter(Room.room_id == room_id).first()
     if getroom is None:
         raise HTTPException(status_code=404, detail="Room not found")
     if getroom.sender_id == user.id:
         user_data["msg"] = msg
-        user_data["status"] = "Delivered"
     else:   
         user_data["msg"] = msg
+    if user_status == True:
         user_data["status"] = "Read"
+    else:
+        user_data["status"] = "Delivered"
     user_data["room_id"] = room_id    
     user_detail = Conversation(**user_data)
     db.add(user_detail)
