@@ -21,7 +21,6 @@ class User(Base):
     updated_on = Column(DateTime,default=datetime.now())
     profile = relationship("Profile",back_populates="user")
     
-
 class Profile(Base):
     __tablename__="profile"
     id=Column(Integer,primary_key=True,index=True)

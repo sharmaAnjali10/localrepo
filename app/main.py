@@ -1,5 +1,4 @@
 from fastapi import FastAPI,Depends, File,HTTPException, UploadFile
-from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.staticfiles import StaticFiles
 from jose import JWTError, jwt
@@ -7,7 +6,7 @@ import json
 from datetime import datetime, timedelta
 from passlib.hash import bcrypt
 import phonenumbers,re,os,smtplib,random,shutil
-from sqlalchemy import Boolean, and_, or_
+from sqlalchemy import and_, or_
 from .database import SessionLocal,engine,Base
 from sqlalchemy.orm import Session
 from .model import User,Otp,Profile,SendRequest,FriendList,Room,Conversation
@@ -287,6 +286,7 @@ def password_update(otp:int, email:str, new_password:str, db:Session=Depends(get
         if check_mail:
             check_mail.password = hashed_password
             db.add(check_mail)
+            db.delete(check_otp)
             db.commit()
             db.refresh(check_mail)
             return{"Message":"Your Password updated successfully..!Login Now"}
@@ -520,8 +520,22 @@ def user_room(friend_id:int, db:Session=Depends(get_db), user:User=Depends(get_c
         raise HTTPException(status_code = 404, detail = "No user existed..")
                    
 @app.post('/chat_list')
-def chat_list(room_id:int,msg:str,user_status:bool,db:Session=Depends(get_db), user:User=Depends(get_current_user)):
-    user_data = {}
+def chat_list(db:Session=Depends(get_db), user:User=Depends(get_current_user)):
+    friend=[]
+    check_current_user = db.query(FriendList).filter(FriendList.user_id == user.id).first()
+    if check_current_user:
+        for getfriend in json.loads(check_current_user.friends):
+            user_info={}
+          
+            user_data = db.query(User).filter(User.id == getfriend).first()
+            if user_data:
+                user_info["user_id"] = user_data.id
+                user_info["firstname"] = user_data.profile[0].firstname
+                user_info["lastname"] = user_data.profile[0].lastname
+                user_info["age"] = user_data.profile[0].age
+                user_info["profile_pic"] = user_data.profile[0].profile_pic
+                friend.append(user_info)
+        return{"Msg":friend}   
     getroom = db.query(Room).filter(Room.room_id == room_id).first()
     if getroom is None:
         raise HTTPException(status_code=404, detail="Room not found")
